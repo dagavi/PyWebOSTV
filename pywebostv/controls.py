@@ -1,8 +1,9 @@
 from collections import Callable
 from queue import Empty
 from uuid import uuid4
+import socket, errno
 
-from pywebostv.connection import WebOSWebSocketClient
+from pywebostv.connection import WebOSWebSocketClient, WebOSClient
 from pywebostv.model import Application, InputSource
 
 
@@ -49,20 +50,63 @@ def standard_validation(payload):
 class WebOSControlBase(object):
     COMMANDS = {}
 
-    def __init__(self, client):
-        self.client = client
+    def __init__(self, host, key):
+        self.client = None
+        self.host = host
+        self.key = key
         self.subscriptions = {}
+        self.resend = False
+
+    def getClient(self):
+        if self.client is None or self.client.terminated:
+            self.connect()
+
+        return self.client
+
+    def disconnect(self):
+        if self.client:
+            try:
+                self.client.close()
+                self.client = None
+                self.subscriptions = {}
+            except:
+                pass
+
+    def connect(self):
+        self.disconnect()
+
+        self.client = WebOSClient(self.host)
+
+        print "Establishing connection to {0}".format(self.client.url)
+        self.client.connect()
+
+        if next(self.client.register(self.key)) != WebOSClient.REGISTERED:
+            raise Error("Cannot register")
 
     def request(self, uri, params, callback=None, block=False, timeout=60):
-        if block:
-            queue = self.client.send_message('request', uri, params,
-                                             get_queue=True)
-            try:
-                return queue.get(timeout=timeout, block=True)
-            except Empty:
-                raise Exception("Failed.")
-        else:
-            self.client.send_message('request', uri, params, callback=callback)
+        try:
+            if block:
+               # Si no hay connect: socket.error: [Errno 32] Broken pipe
+                queue = self.getClient().send_message('request', uri, params,
+                                                 get_queue=True)
+                try:
+                    return queue.get(timeout=timeout, block=True)
+                except Empty:
+                    raise Exception("Failed.")
+            else:
+                # Si no hay connect: socket.error: [Errno 32] Broken pipe
+                self.getClient().send_message('request', uri, params, callback=callback)
+        except socket.error as e:
+            if e.errno == errno.EPIPE and not self.resend:
+                print e
+                self.connect()
+                print "Making new request"
+                self.resend = True
+                return self.request(uri, params, callback, block, timeout)
+            else:
+                raise e;
+        finally:
+            self.resend = False
 
     def __getattr__(self, name):
         subscribe_prefix = "subscribe_"
@@ -102,6 +146,7 @@ class WebOSControlBase(object):
             # callback in the args has higher priority.
             if callback:
                 def callback_wrapper(res):
+
                     payload = res.get("payload")
                     status, message = response_valid(payload)
                     if not status:
@@ -139,7 +184,7 @@ class WebOSControlBase(object):
 
             uid = str(uuid4())
             self.subscriptions[name] = uid
-            self.client.subscribe(cmd_info["uri"], uid, callback_wrapper)
+            self.getClient().subscribe(cmd_info["uri"], uid, callback_wrapper)
         return request_func
 
     def unsubscribe(self, name, cmd_info):
@@ -147,15 +192,15 @@ class WebOSControlBase(object):
             uid = self.subscriptions.get(name)
             if not uid:
                 raise ValueError("Not subscribed.")
-            self.client.unsubscribe(uid)
+            self.getClient().unsubscribe(uid)
             del self.subscriptions[name]
         return request_func
 
-
-class MediaControl(WebOSControlBase):
+class TvControl(WebOSControlBase):
     COMMANDS = {
-        "volume_up": {"uri": "ssap://audio/volumeUp"},
-        "volume_down": {"uri": "ssap://audio/volumeDown"},
+        # Media controls
+        "volume_up": { "uri": "ssap://audio/volumeUp" },
+        "volume_down": { "uri": "ssap://audio/volumeDown" },
         "get_volume": {
             "uri": "ssap://audio/getVolume",
             "validation": standard_validation,
@@ -164,25 +209,26 @@ class MediaControl(WebOSControlBase):
         "set_volume": {
             "uri": "ssap://audio/setVolume",
             "args": [int],
-            "payload": {"volume": arguments(0)}
+            "payload": {
+                "volume": arguments(0)
+            }
         },
         "mute": {
             "uri": "ssap://audio/setMute",
             "args": [bool],
-            "payload": {"mute": arguments(0)}
+            "payload": {
+                "mute": arguments(0)
+            }
         },
-        "play": {"uri": "ssap://media.controls/play"},
-        "pause": {"uri": "ssap://media.controls/pause"},
-        "stop": {"uri": "ssap://media.controls/stop"},
-        "rewind": {"uri": "ssap://media.controls/rewind"},
-        "fast_forward": {"uri": "ssap://media.controls/fastForward"},
-     }
+        "play": { "uri": "ssap://media.controls/play" },
+        "pause": { "uri": "ssap://media.controls/pause" },
+        "stop": { "uri": "ssap://media.controls/stop" },
+        "rewind": { "uri": "ssap://media.controls/rewind" },
+        "fast_forward": { "uri": "ssap://media.controls/fastForward" },
 
-
-class TvControl(WebOSControlBase):
-    COMMANDS = {
-        "channel_down": {"uri": "ssap://tv/channelDown"},
-        "channel_up": {"uri": "ssap://tv/channelUp"},
+        # TV control
+        "channel_down": { "uri": "ssap://tv/channelDown" },
+        "channel_up": { "uri": "ssap://tv/channelUp" },
         "set_channel_with_number": {
             "uri": "ssap://tv/openChannel",
             "args": [int],
@@ -202,13 +248,11 @@ class TvControl(WebOSControlBase):
             "validation": standard_validation,
             "subscription": True
         },
-        "channel_list": {"uri": "ssap://tv/getChannelList"}
-     }
+        "channel_list": { "uri": "ssap://tv/getChannelList" },
 
 
-class SystemControl(WebOSControlBase):
-    COMMANDS = {
-        "power_off": {"uri": "ssap://system/turnOff"},
+        # SystemControl
+        "power_off": { "uri": "ssap://system/turnOff" },
         "info": {
             "uri": "ssap://com.webos.service.update/getCurrentSWInformation",
             "validation": standard_validation,
@@ -217,12 +261,9 @@ class SystemControl(WebOSControlBase):
             "uri": "ssap://system.notifications/createToast",
             "args": [str],
             "payload": {"message": arguments(0)}
-        }
-    }
+        },
 
-
-class ApplicationControl(WebOSControlBase):
-    COMMANDS = {
+        # Application Control
         "list_apps": {
             "uri": "ssap://com.webos.applicationManager/listApps",
             "args": [],
@@ -257,23 +298,45 @@ class ApplicationControl(WebOSControlBase):
             "kwargs": {},
             "payload": arguments(0),
             "validation": standard_validation,
-        }
-    }
+        },
 
-
-class InputControl(WebOSControlBase):
-    COMMANDS = {
+        # Input control
         "type": {
             "uri": "ssap://com.webos.service.ime/insertText",
             "args": [str],
-            "payload": {"text": arguments(0), "replace": 0}
+            "payload": {
+                "text": arguments(0),
+                "replace": 0
+            }
         },
         "delete": {
             "uri": "ssap://com.webos.service.ime/deleteCharacters",
             "args": [int],
-            "payload": {"count": arguments(0)}
+            "payload": {
+                "count": arguments(0)
+            }
         },
-        "enter": {"uri": "ssap://com.webos.service.ime/sendEnterKey"},
+        "enter": { "uri": "ssap://com.webos.service.ime/sendEnterKey" },
+
+
+        # Source control
+        "list_sources": {
+            "uri": "ssap://tv/getExternalInputList",
+            "args": [],
+            "kwargs": {},
+            "payload": {},
+            "validation": standard_validation,
+            "return": lambda p: [InputSource(x) for x in p["devices"]],
+        },
+        "set_source": {
+            "uri": "ssap://tv/switchInput",
+            "args": [InputSource],
+            "kwargs": {},
+            "payload": {
+                "inputId": arguments(0, postprocess=lambda inp: inp["id"])
+            },
+            "validation": standard_validation,
+        },
     }
 
     INPUT_COMMANDS = {
@@ -290,6 +353,9 @@ class InputControl(WebOSControlBase):
             "command": [["type", "scroll"],
                         ["dx", arguments(0)],
                         ["dy", arguments(1)]]
+        },
+        "button": {
+            "command": [["type", "button"], ["name", arguments(0)]]
         },
         "left": {
             "command": [["type", "button"], ["name", "LEFT"]]
@@ -372,29 +438,29 @@ class InputControl(WebOSControlBase):
         "blue": {
             "command": [["type", "button"], ["name", "BLUE"]]
         },
-        "volume_up": {
+        "button_volume_up": {
             "command": [["type", "button"], ["name", "VOLUMEUP"]]
         },
-        "volume_down": {
+        "button_volume_down": {
             "command": [["type", "button"], ["name", "VOLUMEDOWN"]]
         },
-        "channel_up": {
+        "button_channel_up": {
             "command": [["type", "button"], ["name", "CHANNELUP"]]
         },
-        "channel_down": {
+        "button_channel_down": {
             "command": [["type", "button"], ["name", "CHANNELDOWN"]]
-        },
+        }
     }
 
     def __init__(self, *args, **kwargs):
         self.ws_class = kwargs.pop('ws_class', WebOSWebSocketClient)
-        super(InputControl, self).__init__(*args, **kwargs)
+        super(TvControl, self).__init__(*args, **kwargs)
 
     def __getattr__(self, name):
         if name in self.INPUT_COMMANDS:
             return self.exec_mouse_command(name, self.INPUT_COMMANDS[name])
         if name in self.COMMANDS:
-            return super(InputControl, self).__getattr__(name)
+            return super(TvControl, self).__getattr__(name)
         raise AttributeError(name)
 
     def connect_input(self):
@@ -416,25 +482,3 @@ class InputControl(WebOSControlBase):
             payload += "\n\n"
             self.mouse_ws.send(payload)
         return request_func
-
-
-class SourceControl(WebOSControlBase):
-    COMMANDS = {
-        "list_sources": {
-            "uri": "ssap://tv/getExternalInputList",
-            "args": [],
-            "kwargs": {},
-            "payload": {},
-            "validation": standard_validation,
-            "return": lambda p: [InputSource(x) for x in p["devices"]],
-        },
-        "set_source": {
-            "uri": "ssap://tv/switchInput",
-            "args": [InputSource],
-            "kwargs": {},
-            "payload": {
-                "inputId": arguments(0, postprocess=lambda inp: inp["id"]),
-            },
-            "validation": standard_validation,
-        },
-    }
