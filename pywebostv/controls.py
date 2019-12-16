@@ -453,6 +453,7 @@ class TvControl(WebOSControlBase):
 
     def __init__(self, *args, **kwargs):
         self.ws_class = kwargs.pop('ws_class', WebOSWebSocketClient)
+        self.mouse_ws = None
         super(TvControl, self).__init__(*args, **kwargs)
 
     def __getattr__(self, name):
@@ -462,7 +463,14 @@ class TvControl(WebOSControlBase):
             return super(TvControl, self).__getattr__(name)
         raise AttributeError(name)
 
+    def disconnect(self):
+        if self.mouse_ws and not self.mouse_ws.terminated:
+            self.disconnect_input()
+        super(TvControl, self).disconnect()
+
     def connect_input(self):
+        self.disconnect_input()
+
         uri = "ssap://com.webos.service.networkinput/getPointerInputSocket"
         res = self.request(uri, None, block=True)
         sock_path = res.get("payload").get("socketPath")
@@ -472,12 +480,23 @@ class TvControl(WebOSControlBase):
         self.mouse_ws.connect()
 
     def disconnect_input(self):
-        self.mouse_ws.close()
+        if self.mouse_ws:
+            try:
+                self.mouse_ws.close()
+                self.mouse_ws = None
+            except:
+                pass
+
+    def getInputSocket(self):
+        if self.mouse_ws is None or self.mouse_ws.terminated:
+            self.connect_input()
+
+        return self.mouse_ws
 
     def exec_mouse_command(self, cmd_name, cmd_info):
         def request_func(*args, **kwargs):
             params = process_payload(cmd_info["command"], *args, **kwargs)
             payload = "\n".join(":".join(str(y) for y in x) for x in params)
             payload += "\n\n"
-            self.mouse_ws.send(payload)
+            self.getInputSocket().send(payload)
         return request_func
