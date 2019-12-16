@@ -4,7 +4,7 @@ from uuid import uuid4
 import socket, errno
 
 from pywebostv.connection import WebOSWebSocketClient, WebOSClient
-from pywebostv.model import Application, InputSource
+from pywebostv.model import InputSource
 
 
 ARGS_NONE = ()
@@ -269,15 +269,14 @@ class TvControl(WebOSControlBase):
             "args": [],
             "kwargs": {},
             "payload": {},
-            "validation": standard_validation,
-            "return": lambda payload: [Application(x) for x in payload["apps"]]
+            "validation": standard_validation
         },
         "launch": {
             "uri": "ssap://system.launcher/launch",
-            "args": [Application],
+            "args": [str],
             "kwargs": {"content_id": str, "params": dict},
             "payload": {
-                "id": arguments(0, postprocess=lambda app: app["id"]),
+                "id": arguments(0),
                 "contentId": arguments("content_id", default=None),
                 "params": arguments("params", default=None)
             },
