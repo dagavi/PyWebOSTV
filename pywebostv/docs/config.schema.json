@@ -147,7 +147,7 @@ Como posible referencia
             "0",
             "LIST",
             "AD",
-            "DASH",
+            "DASH", // El menú que sale a la derecha dando la tecla "Live"
             "MUTE",
             "VOLUMEUP",
             "VOLUMEDOWN",
@@ -162,7 +162,7 @@ Como posible referencia
             "CLICK",
             "BACK",
             "EXIT",
-            "PROGRAM",
+            "PROGRAM", // Abre la guuía de programaión
             "ENTER",
             "INFO",
             "RED",
