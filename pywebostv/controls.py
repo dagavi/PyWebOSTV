@@ -253,7 +253,7 @@ class TvControl(WebOSControlBase):
 
         # SystemControl
         "power_off": { "uri": "ssap://system/turnOff" },
-        "info": {
+        "system_info": {
             "uri": "ssap://com.webos.service.update/getCurrentSWInformation",
             "validation": standard_validation,
         },
@@ -422,7 +422,7 @@ class TvControl(WebOSControlBase):
         "exit": {
             "command": [["type", "button"], ["name", "EXIT"]]
         },
-        "mute": {
+        "button_mute": {
             "command": [["type", "button"], ["name", "MUTE"]]
         },
         "red": {
