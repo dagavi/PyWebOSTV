@@ -269,7 +269,8 @@ class TvControl(WebOSControlBase):
             "args": [],
             "kwargs": {},
             "payload": {},
-            "validation": standard_validation
+            "validation": standard_validation,
+            "return": lambda p: p["apps"],
         },
         "launch": {
             "uri": "ssap://system.launcher/launch",
