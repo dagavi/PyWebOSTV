@@ -282,7 +282,7 @@ class TvControl(WebOSControlBase):
             },
             "validation": standard_validation,
         },
-        "get_current": {
+        "get_current_app": {
             "uri": "ssap://com.webos.applicationManager/getForegroundAppInfo",
             "args": [],
             "kwargs": {},
