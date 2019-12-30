@@ -76,7 +76,7 @@ class WebOSControlBase(object):
 
         self.client = WebOSClient(self.host)
 
-        print "Establishing connection to {0}".format(self.client.url)
+        # print "Establishing connection to {0}".format(self.client.url)
         self.client.connect()
 
         if next(self.client.register(self.key)) != WebOSClient.REGISTERED:
@@ -97,9 +97,9 @@ class WebOSControlBase(object):
                 self.getClient().send_message('request', uri, params, callback=callback)
         except socket.error as e:
             if e.errno == errno.EPIPE and not self.resend:
-                print e
+                # print e
                 self.connect()
-                print "Making new request"
+                # print "Making new request"
                 self.resend = True
                 return self.request(uri, params, callback, block, timeout)
             else:
