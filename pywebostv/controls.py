@@ -290,7 +290,7 @@ class TvControl(WebOSControlBase):
             "args": [],
             "kwargs": {},
             "payload": {},
-            "validation": lambda p: p.pop("returnValue"),
+            "validation": standard_validation,
             "return": lambda p: p["appId"],
             "subscription": True,
         },
