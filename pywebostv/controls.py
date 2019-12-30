@@ -5,10 +5,9 @@ import socket, errno
 
 from pywebostv.connection import WebOSWebSocketClient, WebOSClient
 from pywebostv.model import InputSource
-
+from pywebostv.exceptions import *
 
 ARGS_NONE = ()
-
 
 def arguments(val, postprocess=lambda x: x, default=ARGS_NONE):
     if type(val) not in (str, int):
@@ -43,7 +42,7 @@ def process_payload(obj, *args, **kwargs):
 
 def standard_validation(payload):
     if not payload.pop("returnValue", None):
-        return False, payload.pop("errorText", "Unknown error.")
+        return False, payload.get("errorText", "Unknown error.")
     return True, None
 
 
@@ -161,7 +160,7 @@ class WebOSControlBase(object):
                 payload = res.get("payload")
                 status, message = response_valid(payload)
                 if not status:
-                    raise IOError(message)
+                    raise WebOSAnswerException(message, payload)
 
                 return return_fn(payload)
             else:
@@ -249,7 +248,10 @@ class TvControl(WebOSControlBase):
             "subscription": True
         },
         "channel_list": { "uri": "ssap://tv/getChannelList" },
-
+        "get_current_program": {
+            "uri": "ssap://tv/getChannelProgramInfo",
+            "validation": standard_validation
+        },
 
         # SystemControl
         "power_off": { "uri": "ssap://system/turnOff" },
@@ -288,7 +290,7 @@ class TvControl(WebOSControlBase):
             "args": [],
             "kwargs": {},
             "payload": {},
-            "validity": lambda p: p.pop("returnValue"),
+            "validation": lambda p: p.pop("returnValue"),
             "return": lambda p: p["appId"],
             "subscription": True,
         },
