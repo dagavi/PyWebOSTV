@@ -75,6 +75,7 @@ class WebOSControlBase(object):
         self.disconnect()
 
         self.client = WebOSClient(self.host)
+        self.client.sock.settimeout(0.3)
 
         # print "Establishing connection to {0}".format(self.client.url)
         self.client.connect()
