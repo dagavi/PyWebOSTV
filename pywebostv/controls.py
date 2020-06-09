@@ -49,12 +49,13 @@ def standard_validation(payload):
 class WebOSControlBase(object):
     COMMANDS = {}
 
-    def __init__(self, host, key):
+    def __init__(self, host, key, timeout = 0):
         self.client = None
         self.host = host
         self.key = key
         self.subscriptions = {}
         self.resend = False
+        self.timeout = timeout
 
     def getClient(self):
         if self.client is None or self.client.terminated:
@@ -75,7 +76,8 @@ class WebOSControlBase(object):
         self.disconnect()
 
         self.client = WebOSClient(self.host)
-        self.client.sock.settimeout(0.3)
+        if self.timeout > 0:
+            self.client.sock.settimeout(self.timeout)
 
         # print "Establishing connection to {0}".format(self.client.url)
         self.client.connect()
